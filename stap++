@@ -241,7 +241,9 @@ for my $key (keys %$args) {
     }
 }
 
-my $tmpdir = tempdir("stapxx-XXXXXXXX", CLEANUP => 1);
+my $tmpdir = tempdir("stapxx-XXXXXXXX", CLEANUP => 0);
+warn "tmpdir is ", $tmpdir;
+
 while (my ($lib, $src) = each %UsedLibs) {
     my $outfile = "$tmpdir/$lib.stp";
     open my $out, ">$outfile"
@@ -257,7 +259,7 @@ if (defined $shcmd) {
 }
 
 my $cmd = "stap " . quote_sh_args(\@stap_opts) . " -";
-#warn $cmd;
+warn $cmd;
 open my $in, "|$cmd"
     or die "Cannot run stap: $!\n";
 print $in $stap_src;

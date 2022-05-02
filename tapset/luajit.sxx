@@ -533,6 +533,7 @@ function luajit_debug_frameline(L, T, fn, pt, nextframe)
 
 function luajit_debug_dumpstack(L, T, depth, base, simple)
 {
+    //printf("wg: on debug dump stack\n")
     level = 0
     dir = 1
     if (depth < 0) {
@@ -547,6 +548,8 @@ function luajit_debug_dumpstack(L, T, depth, base, simple)
         tmp_level = level
         /* Traverse frames backwards. */
         for (nextframe = frame = base - @sizeof_TValue; frame > bot; ) {
+			//printf("wg: iter frame frame %d bot %d ok %s \n",frame,bot,frame >bot==0?"false":"true")
+			//printf("wg: nextf %d frame %d base %d \n",nextframe,frame,base)
             if (@frame_gc(frame) == L) {
                 tmp_level++
             }
@@ -569,6 +572,7 @@ function luajit_debug_dumpstack(L, T, depth, base, simple)
             }
         }
 
+		//printf("wg: found frame %d\n", found_frame)
         if (!found_frame) {
             frame = 0
             size = tmp_level
@@ -581,6 +585,7 @@ function luajit_debug_dumpstack(L, T, depth, base, simple)
             if (fn == 0) {
                 return ""
             }
+			//printf("wg: c frame fn %d frame %d \n",fn,frame)
             if (@isluafunc(fn)) {
                 pt = @funcproto(fn)
 
@@ -732,7 +737,7 @@ function luajit_backtrace(L, g, simple)
         if (!base) {
             return bt
         }
-
+		//printf("wg: jit_base %d\n",base)
         bt .= luajit_debug_dumpstack(L, T, $^arg_depth :default(30), base, simple)
         /*
         if (bt != "") {
@@ -751,13 +756,24 @@ function luajit_backtrace(L, g, simple)
         if (vmstate == -1 && !$*L->cframe) {
             return ""
         }
+        if (vmstate == -1 ) {
+            return "cfunc"
+        }
+		/*
+        if (vmstate == -1 && !$*L->cframe) {
+            return ""
+        }
 
         if (vmstate == -1 || vmstate == -2 || vmstate == -3) {
             base = $*L->base
+			// printf("wg: nojit  vmstate: %d %x\n",vmstate,$*L->cframe)
             bt .= luajit_debug_dumpstack(L, 0, $^arg_depth, base, simple)
         }
+		*/
     }
 
+
+    // printf("wg: get bt: %s===\n", bt)
     return bt
 }
 

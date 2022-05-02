@@ -1,0 +1,6 @@
+[submodule "FlameGraph"]
+	path = FlameGraph
+	url = https://github.com/brendangregg/FlameGraph
+[submodule "openresty-systemtap-toolkit"]
+	path = openresty-systemtap-toolkit
+	url = https://github.com/openresty/openresty-systemtap-toolkit
