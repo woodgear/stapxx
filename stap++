@@ -241,7 +241,7 @@ for my $key (keys %$args) {
     }
 }
 
-my $tmpdir = tempdir("stapxx-XXXXXXXX", CLEANUP => 1);
+my $tmpdir = tempdir("stapxx-XXXXXXXX", CLEANUP => 0);
 while (my ($lib, $src) = each %UsedLibs) {
     my $outfile = "$tmpdir/$lib.stp";
     open my $out, ">$outfile"

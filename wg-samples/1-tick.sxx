@@ -1,0 +1,32 @@
+
+#!/usr/bin/env stap++
+
+@use nginx.lua
+@use luajit_gc64
+
+probe begin
+{
+    warn(sprintf("Start tracing %d ($^exec_path)\n", target()))
+    %( "$^arg_time" != ""  %?
+    warn(sprintf("Please wait for $^arg_time seconds...\n"))
+    %:
+    warn("Hit Ctrl-C to end.\n")
+    %)
+}
+
+probe timer.profile
+{
+    if (pid() == target()) {
+        printf("on tick %d \n",get_cycles())
+    }
+}
+
+probe timer.s(10)
+{
+    warn("Time's up. 10 Quitting now...\n")
+    exit()
+}
+
+probe end {
+    warn(sprintf("Found %d JITted samples.\n", jitted))
+}
