@@ -256,7 +256,7 @@ if (defined $shcmd) {
     push @stap_opts, "-c", $shcmd;
 }
 
-my $cmd = "stap " . quote_sh_args(\@stap_opts) . " -";
+my $cmd = "wg-stap --sysroot=/proc/2091042/root " . quote_sh_args(\@stap_opts) . " -";
 #warn $cmd;
 open my $in, "|$cmd"
     or die "Cannot run stap: $!\n";

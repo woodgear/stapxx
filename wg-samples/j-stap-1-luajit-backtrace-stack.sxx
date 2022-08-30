@@ -8,6 +8,7 @@ global jitted
 global vmst_gc
 global nojitted 
 global g_cost 
+global bts  # map, key:bt,val: count
 
 probe begin
 {
@@ -31,16 +32,6 @@ probe timer.profile
     }
 }
 
-probe timer.s($^arg_depth :default(30))
-{
-    time=$^arg_depth
-    printf("time up. %d total %d s jitted %d %d %d cost %d ns %d ms\n",time,total,jitted,nojitted,vmst_gc,g_cost,g_cost/100000)
-    exit()
-}
-
-probe end {
-    warn("end.\n")
-}
 
 function process_event() {
     # ml: lua_State
@@ -70,9 +61,48 @@ function process_event() {
     }
 
     bt =  luajit_backtrace(l,g)
-
+    if (bt=="") {
+        printf("stack warn wg: empty bt\n")
+        return 0
+    }
+    f = probefunc()
+    if (f != "") {
+        // wg: keep it in same line,we will replace |lb| to real line-break later
+        bt = "|pf-s|".f ."|pf-e|". "|lb|" . bt
+    }
+    printf("stack wg: bt  %s\n",bt)
+    bts[bt] <<< 1
+    return 1
 }
 
+probe timer.s($^arg_time :default(30))
+{
+    exit()
+}
+
+probe end {
+    time=$^arg_time
+    ns = g_cost
+    ms = g_cost/1000000
+    s = ms /1000
+    msg = sprintf("wg: end. time %d jitted %d %d %d cost %dns %dms %ds\n",time,jitted,nojitted,vmst_gc,ns,ms,s)
+    output_report()
+    print(msg)
+    warn(msg)
+}
+
+function output_report() {
+    max=$^arg_limit :default(1000)
+    min=$^arg_min :default(2)
+    foreach (bt in bts- limit max) {
+        cnt = @count(bts[bt])
+        printf("report wg: %s %d\n",bt,cnt)
+        if (cnt <= min) {
+            break
+        }
+        printf("report:%s|lt|%d\n", bt, cnt)
+    }
+}
 
 function ngx_lua_get_main_lua_vm()
 {
@@ -173,9 +203,11 @@ function luajit_backtrace(l, g) {
 
         func= luajit_trace_starting_func(l,t)
         printf("trace wg: func %s \n",func)
+        bt .="|trace-f|"
         bt .=func
 
         if (base) {
+            bt.="|stack|"
             bt .=luajit_debug_dumpstack(l,t,30,base,1)
         }
         return bt
@@ -192,15 +224,26 @@ function luajit_backtrace(l, g) {
         printf("trace wg: interp but not cframe\n")
         return "err:vm_interp_no_cframe"
     }
-    if ( vm_interp || vm_c || vm_gc ) {
-        // TODO crash here vm_c
+    # wg: 当前正常执行的是c函数
+    if (vm_c) {
+        // TODO may crash here
         printf("trace wg: vm_interp %d  vm_c %d vm_gc %d\n",vm_interp,vm_c,vm_gc)
-        return "err:vm-xstate"
         base_tv = $*l->base
-        bt_fn= luajit_debug_dumpstack(L, 0, 30, base_tv,1)
+        bt_fn= luajit_debug_dumpstack(l, 0, 3, base_tv,1)
+        if (bt_fn=="") {
+            bt_fn = "err:empty_vmc_fn"
+        }
         printf("trace wg: vm x state bt %s\n",bt_fn)
+        bt.="|vm_c|"
+
         bt.=bt_fn
         return bt
+    }
+    if ( vm_interp  ) {
+        return "err:vm_xstate_interp"
+    }
+    if ( vm_gc  ) {
+        return "err:vm_xstate_gc"
     }
     return "err:noway"
 }
@@ -441,29 +484,42 @@ function luajit_debug_dumpstack(l, t, depth, base, simple) {
         if (frame) {
             bt_fn = luajit_frame_parse_func(l,t,frame,size,simple) 
             printf("ds wg: get stack %s level %d/%d\n",bt_fn,level,depth)
+            bt.="|stack-fs|"
             bt.=bt_fn
+            bt.="|stack-fe|"
         } else if (dir == 1) {
             // wg ?
-            printf("wg: wg break \n")
-            break
+            printf("wg: no frame break \n")
+            if (bt=="") {
+                return "err:none-frame"
+            }
+            return bt
         } else {
             // wg ?
             level -= size
         }
         level += dir
     }
+    if (bt=="") {
+        return "err:none-frame:noloop"
+    }
     return bt
 }
 
 function luajit_frame_parse_func(l,t,frame,size,simple) {
     nextframe = size ? frame + size * @sizeof_TValue : 0
-    printf("frame wg: find a frame,start %x end %x size %d\n",frame,nextframe,size)
+    printf("frame wg: find a frame,start %x end(next) %x size %d\n",frame,nextframe,size)
 
     fn = luajit_frame_func(frame)
     if (fn == 0) {
         printf("frame warn wg: no fn find from frame\n")
         return "err:empty-fn"
     }
+    # TODO DONT KNOW WHY BUT A HACK PATCH HEREE
+    if (fn==0x7fffffffffff) {
+        return "err:0x7f"
+    }
+    printf("frame debug wg: fn %x\n",fn)
     if (@isluafunc(fn)) {
         printf("wg: find luafunc \n")
         pt = @funcproto(fn)
@@ -488,7 +544,7 @@ function luajit_frame_parse_func(l,t,frame,size,simple) {
             return "err:empty-chunk"
         }
         path = luajit_unbox_gcstr(name)
-        bt = sprintf("%s:%d|ln|", path, line)
+        bt = sprintf("%s:%d", path, line)
         printf("frame wg: proto chunkname success %s\n",bt)
         return bt
     } 
