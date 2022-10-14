@@ -84,9 +84,7 @@ function stapxx-run-docker-nginx() (
     local sxx="./wg-samples/docker/j-stap-1-luajit-backtrace-stack.sxx"
     local sxx="./wg-samples/docker/2-get_l_m_vmstate.sxx"
     local sxx="./wg-samples/docker/j-stap-1-luajit-backtrace-stack.sxx"
-    sudo rm -rf $out
-    mkdir -p $out
-
+    # local sxx="./wg-samples/docker/fnname.sxx"
     sudo rm -rf ./stap-raw
     mkdir -p ./stap-raw
     ./stap++ -dump-src -base=/proc/$pid/root -dump-src-out=./stap-raw/nginx.stap $sxx --sample-pid $pid -exec=/proc/$pid/root/openresty-wg/target/nginx/sbin/nginx --arg time=$time
@@ -107,17 +105,30 @@ function stapxx-run-docker-nginx() (
     echo "lua_path $lua_path"
     sed -i "s|$\^exec_path|$exec_path|g" ./stap-raw/nginx.stap 
     sed -i "s|$\^libluajit_path|$lua_path|g" ./stap-raw/nginx.stap 
+    mkdir ./stap-raw
     ./stap-raw/run.sh 2>&1 | tee ./stap-raw/stap.log
-    mkdir -p ./stap-raw/out
-    stapxx-svg ./stap-raw/stap.log  ./stap-raw/out
-    ls ./stap-raw/out
+    stapxx-svg ./stap-raw/stap.log  ./stap-raw/out /proc/$pid/root
+    # ls ./stap-raw/out
     # firefox  ./stap-raw/out/stacks.svg
 )
 
 function stapxx-svg () (
     local log=$1
     local out=$2
+    local base=$3
+    rm -rf $out
+    mkdir -p $out
     cat $log |grep -a 'report:' |sed 's/report://g' > $out/stacks.bt
+    # if [ -n "$MERGE_RAW_PROBEFN" ] ; then
+        sed -i 's/|pf-s|0x.*|pf-e|/|pf-s|unresolved|pf-e|/g' $out/stacks.bt
+    # fi
+
+    # if [ -n "$IGNORE_RAW_PROBEFN" ] ; then
+         sed -i '/|pf-s|unresolved|pf-e||lb||vm_c|err:none-frame/d' $out/stacks.bt
+         sed -i '/|pf-s|unresolved|pf-e||lb|err:vm_xstate_interp/d' $out/stacks.bt
+
+    # fi
+
     sed -i 's/|lb|/\n/g' $out/stacks.bt
     sed -i 's/|stack-fs|/\n/g' $out/stacks.bt
     sed -i 's/|stack-fe|//g' $out/stacks.bt
@@ -127,15 +138,13 @@ function stapxx-svg () (
     sed -i 's/|stack|//g' $out/stacks.bt
     sed -i 's/|lt|/\n\t/g' $out/stacks.bt
 
-    if [ -n "$IGNORE_RAW_PROBEFN" ] ; then
-        sed -i 's/|pf-s|0x.*|pf-e|/|pf-s|unresolved|pf-e|/g' $out/stacks.bt
-    fi
     sed -i 's/|pf-s|//g' $out/stacks.bt
     sed -i 's/|pf-e|//g' $out/stacks.bt
+    sed -i "s|@/|$base|g" $out/stacks.bt
     # TODO
-    sed -i 's|@/|/proc/2091042/root/|g' $out/stacks.bt
     ./actions/fix-lua-bt $out/stacks.bt > $out/stacks.fix.bt
     ./actions/stackcollapse-stap.pl  $out/stacks.fix.bt >  $out/stacks.cbt
+    sed -i "s|$base||g" $out/stacks.cbt
     ./actions/flamegraph.pl --encoding="ISO-8859-1" \
               --title="Lua-land on-CPU flamegraph" \
               $out/stacks.cbt > $out/stacks.svg
