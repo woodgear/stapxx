@@ -99,30 +99,30 @@ function ngx_cycle_get_module_main_conf(cycle, module_index)
 # luajit
 function luajit_G(L)
 {
-    $*L := @cast(L, "lua_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*L := @cast(L, "lua_State", "$^libluajit_path")
     return $*L->glref->ptr64
 }
 
 
 function luajit_cur_thread(g)
 {
-    $*g := @cast(g, "global_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*g := @cast(g, "global_State", "$^libluajit_path")
     gco = $*g->cur_L->gcptr64
     if (gco == 0) {
         return 0
     }
-    $*gco := @cast(gco, "GCobj", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*gco := @cast(gco, "GCobj", "$^libluajit_path")
     printf("wg: cur_thread %x\n",&$*gco->th)
     return &$*gco->th
 }
 
 function lua_state_status(l) {
-   $*tl := @cast(l, "lua_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+   $*tl := @cast(l, "lua_State", "$^libluajit_path")
    return $*tl->status
 }
 
 
 function luajit_global_State_vmstate(g)
 {
-    return @cast(g, "global_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->vmstate
+    return @cast(g, "global_State", "$^libluajit_path")->vmstate
 }

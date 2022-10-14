@@ -1,0 +1,27 @@
+session_name: shark
+windows:
+  - window_name: shark
+    layout: tiled
+    panes:
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'stapxx'
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'alb-docker'
+          - cd /home/cong/sm/project/alauda-resty
+          - source ./actions/resty-app.actions.sh;resty-app-run-docker
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'backend1'
+          - cd /home/cong/sm/project/alauda-resty
+          - source ./actions/resty-app.actions.sh;resty-start-backend backend-1
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'backend2'
+          - cd /home/cong/sm/project/alauda-resty
+          - source ./actions/resty-app.actions.sh;resty-start-backend backend-2
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'client'
+          - cd /home/cong/sm/project/alauda-resty
+          - source ./actions/resty-app.actions.sh;resty-app-keep-curl
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'k6'
+          - cd /home/cong/sm/project/alauda-resty
+          - source ./actions/resty-app.actions.sh;resty-app-k6-simple

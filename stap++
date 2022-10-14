@@ -16,6 +16,8 @@ GetOptions("D=s@",          \(my $D_opts),
            "arg=s%",        \(my $args),
            "args",          \(my $print_args),
            "dump-src",      \(my $dump_src),
+           "dump-src-out=s",      \(my $dump_src_out),
+           "base=s",      \(my $base),
            "sample-pid=i",  \(my $sample_pid),
            "exec=s",        \(my $exec_path),
            "help",          \(my $help),
@@ -24,7 +26,8 @@ GetOptions("D=s@",          \(my $D_opts),
            "e=s",           \(my $src),
            "v",             \(my $verbose),
            "skip-badvars",  \(my $skip_badvars),
-           "I=s@",          \(my $Inc))
+           "I=s@",          \(my $Inc),
+           "sysroot=s",     \(my $sysroot))
    or die usage();
 
 push @$Inc, '.', "$FindBin::Bin/tapset";
@@ -39,52 +42,12 @@ if ($print_args && $args && %$args) {
     die "No --arg is allowed when --args is specified.\n";
 }
 
-my $ver = `stap -V 2>&1`;
-if (!defined $ver) {
-    die "Systemtap not installed or its \"stap\" utility is not visible to the PATH environment: $!\n";
-}
-
-if ($ver =~ /version\s+(\d+\.\d+)/i) {
-    my $v = $1;
-    my $min_ver = 2.3;
-    if ($v < $min_ver) {
-        die "ERROR: at least systemtap $min_ver is required but found $v\n";
-    }
-
-} else {
-    die "ERROR: unknown version of systemtap:\n$ver\n";
-}
-
-if ($help) {
-    print usage();
-    exit;
-}
-
-my %set_D_opts;
-for my $opt (@$D_opts) {
-    #warn "$opt\n";
-    if ($opt =~ /^([_A-Z]+)=/) {
-        $set_D_opts{$1} = 1;
-    }
-}
-
-if (!$set_D_opts{MAXACTION}) {
-    push @$D_opts, "MAXACTION=100000";
-}
-
-if (!$set_D_opts{MAXMAPENTRIES}) {
-    push @$D_opts, "MAXMAPENTRIES=5000";
-}
-
-if (!$set_D_opts{MAXBACKTRACE}) {
-    push @$D_opts, "MAXBACKTRACE=200";
-}
+# verify systemtap verion
 
 my $infile;
 if (!defined $src) {
     $infile = shift
         or die "No input file specified.\n";
-
     $src = read_src_file($infile);
 
 } else {
@@ -93,105 +56,8 @@ if (!defined $src) {
 
 my (%StdVars, %UsedLibs, %DSOs, %LibPaths, %UsedStdVars);
 
+my @dpaths;
 my @stap_opts;
-
-if ($verbose) {
-    push @stap_opts, "-v";
-}
-
-if ($d_opts) {
-    for my $opt (@$d_opts) {
-        push @stap_opts, '-d', $opt;
-    }
-}
-
-if (defined $skip_badvars) {
-    push @stap_opts, "--skip-badvars";
-}
-
-for my $opt (@$D_opts) {
-    push @stap_opts, "-D$opt";
-}
-
-if (defined $exec_path) {
-    if (!-f $exec_path) {
-        die "$exec_path not found.\n";
-    }
-
-    $StdVars{exec_path} = $exec_path;
-    push @stap_opts, '-d', $exec_path;
-
-    open my $in, "ldd $exec_path|"
-        or die "cannot run the command \"ldd $exec_path\": $!\n";
-    while (<$in>) {
-        if (m{\s+(\/\S+\.so(?:\.\d+)*)}) {
-            my $path = $1;
-            #warn "Found DSO $path.\n";
-            $DSOs{$path} = 1;
-        }
-    }
-
-    for my $path (sort keys %DSOs) {
-        push @stap_opts, '-d', $path;
-    }
-
-    close $in;
-}
-
-if (defined $pid) {
-    if (defined $master_pid) {
-        die "-x <pid> and --master <pid> are exclusive.\n";
-    }
-
-    push @stap_opts, "-x", $pid;
-    my $exec_file = "/proc/$pid/exe";
-    if (!-f $exec_file) {
-        die "Nginx process $pid is not running or ",
-            "you do not have enough permissions.\n";
-    }
-
-    $StdVars{pid_ok} = gen_pid_test_condition();
-    $StdVars{target} = $pid;
-
-    if (!defined $exec_path) {
-        $exec_path = readlink $exec_file;
-        $StdVars{exec_path} = $exec_path;
-        push @stap_opts, "-d", $exec_path;
-    }
-
-    process_dso($pid);
-}
-
-if (defined $master_pid) {
-    #push @stap_opts, "-x", $master_pid;
-    my $exec_file = "/proc/$master_pid/exe";
-    if (!-f $exec_file) {
-        die "Nginx process $master_pid is not running or ",
-            "you do not have enough permissions.\n";
-    }
-
-    if (!defined $exec_path) {
-        $exec_path = readlink $exec_file;
-        $StdVars{exec_path} = $exec_path;
-        push @stap_opts, "-d", $exec_path;
-    }
-
-    # process DSO files
-    my @pids = get_child_processes($master_pid);
-    if (@pids == 0) {
-        die "No child processes found for $master_pid.\n";
-    }
-
-    $StdVars{pid_ok} = gen_pid_test_condition(\@pids);
-    $StdVars{target} = "@pids";
-
-    my $pid = $pids[0];
-    process_dso($pid);
-}
-
-if ($sample_pid) {
-    process_dso($sample_pid);
-}
 
 if (!defined $StdVars{pid_ok} && defined $exec_path) {
     $StdVars{pid_ok} = '1';
@@ -210,58 +76,16 @@ if (!$print_args) {
 
 my %used_args;
 
+print " wg: process_src $infile  --\n";
 my $stap_src = process_src($infile, $src);
 if ($dump_src) {
-    print $stap_src;
-    exit;
-}
-
-if ($print_args) {
-    for my $name (sort keys %used_args) {
-        my $default = $used_args{$name};
-        print "\t--arg $name=VALUE";
-        if (defined $default) {
-            print " (default: $default)\n";
-
-        } else {
-            print "\n";
-        }
-    }
-    exit;
-}
-
-for my $key (keys %$args) {
-    if (!$UsedStdVars{"arg_$key"}) {
-        my $val = $args->{$key};
-        if (!defined $val) {
-            $val = '';
-        }
-        warn "WARNING: \$^arg_$key is defined by \"--arg $key=$val\", "
-             ."but never used.\n";
+    if ($dump_src_out) {
+        print " wg: dump_src_out $dump_src_out\n";
+        open my $out, ">$dump_src_out" or die "Cannot open $dump_src_out for writing: $!\n";
+        print $out $stap_src;
+        close $out;
     }
 }
-
-my $tmpdir = tempdir("stapxx-XXXXXXXX", CLEANUP => 0);
-while (my ($lib, $src) = each %UsedLibs) {
-    my $outfile = "$tmpdir/$lib.stp";
-    open my $out, ">$outfile"
-        or die "Cannot open $outfile for writing: $!\n";
-    print $out $src;
-    close $out;
-}
-
-push @stap_opts, "-I", $tmpdir;
-
-if (defined $shcmd) {
-    push @stap_opts, "-c", $shcmd;
-}
-
-my $cmd = "wg-stap --sysroot=/proc/2091042/root " . quote_sh_args(\@stap_opts) . " -";
-#warn $cmd;
-open my $in, "|$cmd"
-    or die "Cannot run stap: $!\n";
-print $in $stap_src;
-close $in;
 
 sub eval_usr_var {
     my ($file, $usr_vars, $var) = @_;
@@ -311,7 +135,9 @@ sub eval_std_var {
 
     } elsif ($var =~ /^(lib\w+)_path$/) {
         my $prefix = $1;
-        my $libpath = find_dso_path($prefix);
+        my $dso_path = find_dso_path($prefix);
+        my $libpath = "$dso_path";
+        print "wg: eval_std_var $prefix |  $libpath\n";
         if (!$libpath) {
             warn "$file: line $.: $prefix is not found, assuming it is statically linked.\n";
             if (!defined $StdVars{exec_path}) {
@@ -321,7 +147,6 @@ sub eval_std_var {
             $LibPaths{$prefix} = $StdVars{exec_path};
             return $StdVars{exec_path};
         }
-
         return $libpath;
 
     } else {
@@ -370,38 +195,17 @@ sub find_dso_path {
 
 sub read_src_file {
     my $infile = shift;
+    print " wg: read_src_file $infile\n";
     open my $in, $infile
         or die "Cannot open $infile for reading: $!\n";
-    my $src = do { local $/; <$in> };
+    my $src = do { local $/; <$in> }; # wtf https://www.perlmonks.org/?node_id=287647
     close $in;
+    print " wg: read_src_file out\n";
     return $src;
 }
 
-sub use_libs {
-    my ($file, $libs) = @_;
-    #warn "libs: $libs";
-    my @libs = split /\s*,\s*/, $libs;
-    for my $lib (@libs) {
-        #warn "processing $lib...";
-        my $path = join("/", split /\./, $lib) . ".sxx";
-        #warn $path;
-        for my $dir (@$Inc) {
-            my $abspath = File::Spec->catfile($dir, $path);
-            #warn "Testing $abspath\n";
-            #warn "exist: ", (-f $abspath) ? 1 : 0;
-            if (-f $abspath) {
-                my $src = read_src_file($abspath);
-                $UsedLibs{$lib} = process_src($abspath, $src);
-                goto next_lib;
-            }
-        }
-        die "$file: line $.: cannot find \@use library $lib\n";
-next_lib:
-    }
-    return "";
-}
-
 sub process_src {
+    print "process_src";
     my ($file, $src) = @_;
 
     my %usr_vars;
@@ -419,7 +223,6 @@ sub process_src {
 
         s{\$\^(arg_\w+)(?:\s*:(\w+)\s*\((.*?)\))?}{eval_std_var($file, $1, $2, $3)}eg;
         s{\@pfunc\s*\(\s*(\w+)\s*\)}{process("\$^exec_path").function("$1")}g;
-        s{\$\^(\w+|lib[-.\w]+_path)(?:\s*:(\w+)\s*\((.*?)\))?}{eval_std_var($file, $1, $2, $3)}eg;
         s{\$\*(\w+)\s*:=\s*(\&?\@(?:cast|var)\(.*?\)(?:\[\d+\])?)}{$usr_vars{$1} = $2; ""}eg;
         s{\$\*(\w+)}{eval_usr_var($file, \%usr_vars, $1)}eg;
         s{\@use\s+($libname_pat(?:\s*,\s*$libname_pat)*)}{use_libs($file, $1)}eg;
@@ -451,6 +254,8 @@ Options:
     --sample-pid PID  Sample process to inspect DSO objects to load via -d
     -v              Be verbose.
     -x PID          Sets target() to PID (also for $^exec_path and $^libxxx_path).
+    -sysroot path   Set sysroot fot stap
+
 
 Examples:
     stap++ -x 12345 -e 'probe begin { println("hello") exit() }'
@@ -496,6 +301,7 @@ sub gen_pid_test_condition {
     return '(' . join(" || ", @c) . ')';
 }
 
+# 读 /proc/$pid/maps 然后加 -d
 sub process_dso {
     my $pid = shift;
     my $maps_file = "/proc/$pid/maps";
@@ -511,6 +317,8 @@ sub process_dso {
     }
 
     for my $path (sort keys %DSOs) {
+        print " wg: process_dso -d $path\n";
+        push @dpaths, $path;
         push @stap_opts, "-d", $path;
     }
 }

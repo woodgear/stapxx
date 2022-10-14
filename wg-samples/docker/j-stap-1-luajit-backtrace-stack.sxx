@@ -40,7 +40,7 @@ function process_event() {
 
     # g: global_State
     g = luajit_G(mL)
-    $*g := @cast(g, "global_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*g := @cast(g, "global_State", "$^libluajit_path")
     printf("wg: g %x\n",g)
 
     # L: lua_State 
@@ -146,32 +146,32 @@ function ngx_cycle_get_module_main_conf(cycle, module_index)
 # luajit
 function luajit_G(L)
 {
-    $*L := @cast(L, "lua_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*L := @cast(L, "lua_State", "$^libluajit_path")
     return $*L->glref->ptr64
 }
 
 
 function luajit_cur_thread(g)
 {
-    $*g := @cast(g, "global_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*g := @cast(g, "global_State", "$^libluajit_path")
     gco = $*g->cur_L->gcptr64
     if (gco == 0) {
         return 0
     }
-    $*gco := @cast(gco, "GCobj", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*gco := @cast(gco, "GCobj", "$^libluajit_path")
     printf("wg: cur_thread %x\n",&$*gco->th)
     return &$*gco->th
 }
 
 function lua_state_status(l) {
-   $*tl := @cast(l, "lua_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+   $*tl := @cast(l, "lua_State", "$^libluajit_path")
    return $*tl->status
 }
 
 
 function luajit_global_State_vmstate(g)
 {
-    return @cast(g, "global_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->vmstate
+    return @cast(g, "global_State", "$^libluajit_path")->vmstate
 }
 
 
@@ -179,7 +179,7 @@ function luajit_backtrace(l, g) {
     # l: lua_State
     # g: global_State
 
-    $*l := @cast(l, "lua_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*l := @cast(l, "lua_State", "$^libluajit_path")
 
     bt = ""
 
@@ -252,12 +252,12 @@ function luajit_get_trace(g, traceno)
 {
     printf("trace wg: get trace %x %d\n",g,traceno)
     # offsetoff
-    zg  = &@cast(0, "GG_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->g
+    zg  = &@cast(0, "GG_State", "$^libluajit_path")->g
     GG = g - zg
     printf("trace wg: zg %d g %x gg %x\n",zg,g,GG)
-    $*GG := @cast(GG, "GG_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*GG := @cast(GG, "GG_State", "$^libluajit_path")
     J = &$*GG->J
-    $*J := @cast(J, "jit_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*J := @cast(J, "jit_State", "$^libluajit_path")
     if (J == 0) {
         return 0
     }
@@ -268,13 +268,13 @@ function luajit_get_trace(g, traceno)
 
 function luajit_trace_starting_func(g, trace)
 {
-    $*trace := @cast(trace, "GCtrace", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*trace := @cast(trace, "GCtrace", "$^libluajit_path")
     gco = $*trace->startpt->gcptr64
     if (gco == 0) {
         return ""
     }
     pt = &$*gco->pt
-    $*pt := @cast(pt, "GCproto", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*pt := @cast(pt, "GCproto", "$^libluajit_path")
 
     firstline = $*pt->firstline
     printf("trace wg: firstline %d\n",firstline)
@@ -287,13 +287,13 @@ function luajit_trace_starting_func(g, trace)
 }
 
 function luajit_proto_chunkname(pt) {
-    $*pt := @cast(pt, "GCproto", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*pt := @cast(pt, "GCproto", "$^libluajit_path")
     gco = $*pt->chunkname->gcptr64
-    $*gco := @cast(gco, "GCobj", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*gco := @cast(gco, "GCobj", "$^libluajit_path")
     return &$*gco->str
 }
 
-@define sizeof_GCstr %( &@cast(0, "GCstr", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[1] %)
+@define sizeof_GCstr %( &@cast(0, "GCstr", "$^libluajit_path")[1] %)
 @define strdata(s) %(
     (@s + @sizeof_GCstr)
 %)
@@ -301,13 +301,13 @@ function luajit_proto_chunkname(pt) {
 /* convert GCstr to stap string */
 function luajit_unbox_gcstr(gcs)
 {
-    $*gcs := @cast(gcs, "GCstr", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*gcs := @cast(gcs, "GCstr", "$^libluajit_path")
     printf("trace wg: gcstr %x\n",gcs)
     if (gcs == 0) {
         return ""
     }
 
-   $*gcs := @cast(gcs, "GCstr", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+   $*gcs := @cast(gcs, "GCstr", "$^libluajit_path")
    src = @strdata(gcs)
    printf("trace wg: gcstr src %x len %d\n",src,$*gcs->len)
    return user_string_n_warn(src, $*gcs->len)
@@ -317,7 +317,7 @@ function luajit_unbox_gcstr(gcs)
 @define LJ_GCVMASK %( 140737488355327 %)
 
 @define gcrefu(frame) %(
-    @cast(@frame, "TValue", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->gcr->gcptr64
+    @cast(@frame, "TValue", "$^libluajit_path")->gcr->gcptr64
 %)
 
 @define gcval(frame) %(
@@ -339,7 +339,7 @@ function luajit_unbox_gcstr(gcs)
 @define FRAME_TYPEP %( (@FRAME_TYPE|@FRAME_P) %)
 
 @define frame_ftsz(tv) %(
-    @cast(@tv, "TValue", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->ftsz
+    @cast(@tv, "TValue", "$^libluajit_path")->ftsz
 %)
 
 @define frame_type(f) %(
@@ -353,14 +353,14 @@ function luajit_unbox_gcstr(gcs)
     (@frame_type(@f) == @FRAME_LUA)
 %)
 
-@define sizeof_TValue  %( &@cast(0, "TValue", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[1] %)
+@define sizeof_TValue  %( &@cast(0, "TValue", "$^libluajit_path")[1] %)
 
 
 
 
 
 @define frame_pc(tv) %(
-    @cast(@tv, "TValue", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->ftsz
+    @cast(@tv, "TValue", "$^libluajit_path")->ftsz
 %)
 
 @define frame_contpc(f) %(
@@ -393,17 +393,17 @@ function luajit_unbox_gcstr(gcs)
 %)
 
 @define isluafunc(fn) %(
-    (@cast(@fn, "GCfunc", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->c->ffid == @FF_LUA)
+    (@cast(@fn, "GCfunc", "$^libluajit_path")->c->ffid == @FF_LUA)
 %)
 
 @define isffunc(fn) %(
-    (@cast(@fn, "GCfunc", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->c->ffid > @FF_C)
+    (@cast(@fn, "GCfunc", "$^libluajit_path")->c->ffid > @FF_C)
 %)
 
-@define sizeof_GCproto %( &@cast(0, "GCproto", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[1] %)
+@define sizeof_GCproto %( &@cast(0, "GCproto", "$^libluajit_path")[1] %)
 
 @define funcproto(fn) %(
-    (@cast(@fn, "GCfunc", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->l->pc->ptr64 - @sizeof_GCproto)
+    (@cast(@fn, "GCfunc", "$^libluajit_path")->l->pc->ptr64 - @sizeof_GCproto)
 %)
 
 @define proto_bc(pt) %(
@@ -415,7 +415,7 @@ function luajit_unbox_gcstr(gcs)
 %)
 
 @define proto_lineinfo(pt) %(
-    @cast(@pt, "GCproto", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->lineinfo->ptr64
+    @cast(@pt, "GCproto", "$^libluajit_path")->lineinfo->ptr64
 %)
 @define frame_iscont(f) %(
     (@frame_typep(@f) == @FRAME_CONT)
@@ -423,7 +423,7 @@ function luajit_unbox_gcstr(gcs)
 @define NO_BCPOS    %( ~0 %)
 
 
-@define sizeof_BCIns %( &@cast(0, "BCIns", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[1] %)
+@define sizeof_BCIns %( &@cast(0, "BCIns", "$^libluajit_path")[1] %)
 
 
 function luajit_debug_dumpstack(l, t, depth, base, simple) {
@@ -437,7 +437,7 @@ function luajit_debug_dumpstack(l, t, depth, base, simple) {
     }
     bt = ""
 
-    $*l := @cast(l, "lua_State", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*l := @cast(l, "lua_State", "$^libluajit_path")
     while (level != depth) {
         // wg:栈底
         bot = $*l->stack->ptr64 + @sizeof_TValue //@LJ_FR2
@@ -523,7 +523,7 @@ function luajit_frame_parse_func(l,t,frame,size,simple) {
     if (@isluafunc(fn)) {
         printf("wg: find luafunc \n")
         pt = @funcproto(fn)
-        $*pt := @cast(pt, "GCproto", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+        $*pt := @cast(pt, "GCproto", "$^libluajit_path")
 
         // try to get linenum
         if (simple) {
@@ -559,7 +559,7 @@ function luajit_frame_parse_func(l,t,frame,size,simple) {
 
 function luajit_frame_func(f) {
     gco = @frame_gc(f)
-    $*gco := @cast(gco, "GCobj", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*gco := @cast(gco, "GCobj", "$^libluajit_path")
     return &$*gco->fn
 }
 
@@ -578,7 +578,7 @@ function luajit_debug_frameline(l, t, fn, pt, nextframe)
 
 
 function luajit_debug_framepc(l, t, fn, pt, nextframe) {
-    $*t := @cast(t, "GCtrace", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")
+    $*t := @cast(t, "GCtrace", "$^libluajit_path")
 
     printf("wg: debug framepc: L=%p, fn=%p, nextframe=%p\n", l, fn, nextframe)
     if (nextframe == 0) {
@@ -605,7 +605,7 @@ function luajit_debug_framepc(l, t, fn, pt, nextframe) {
     if (pos > sizebc) {
         printf("wg: Undo the effects of lj_trace_exit for JLOOP.\n")
         if (!t) {
-            t = ins - 1 * @sizeof_BCIns - &@cast(0, "GCtrace", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")->startins;
+            t = ins - 1 * @sizeof_BCIns - &@cast(0, "GCtrace", "$^libluajit_path")->startins;
         }
         printf("wg: startpc: %d\n", $*t->startpc->ptr64)
         pos = @proto_bcpos(pt, $*t->startpc->ptr64);
@@ -632,14 +632,14 @@ function luajit_debug_line(pt, pc)
         }
 
         if ($*pt->numline < 256) {
-            return first + @cast(lineinfo, "uint8_t", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[pc]
+            return first + @cast(lineinfo, "uint8_t", "$^libluajit_path")[pc]
         }
 
         if ($*pt->numline < 65536) {
-            return first + @cast(lineinfo, "uint16_t", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[pc]
+            return first + @cast(lineinfo, "uint16_t", "$^libluajit_path")[pc]
         }
 
-        return first + @cast(lineinfo, "uint32_t", "/proc/2091042/root/openresty-wg/target/luajit/lib/libluajit-5.1.so.2")[pc]
+        return first + @cast(lineinfo, "uint32_t", "$^libluajit_path")[pc]
     }
 
     return -1
