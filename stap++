@@ -8,8 +8,6 @@ use File::Spec ();
 use File::Temp qw( tempdir );
 use FindBin ();
 
-sub quote_sh_args ($);
-
 GetOptions("D=s@",          \(my $D_opts),
            "c=s",           \(my $shcmd),
            "d=s@",          \(my $d_opts),
@@ -17,7 +15,6 @@ GetOptions("D=s@",          \(my $D_opts),
            "args",          \(my $print_args),
            "dump-src",      \(my $dump_src),
            "dump-src-out=s",      \(my $dump_src_out),
-           "base=s",      \(my $base),
            "sample-pid=i",  \(my $sample_pid),
            "exec=s",        \(my $exec_path),
            "help",          \(my $help),
@@ -34,25 +31,11 @@ push @$Inc, '.', "$FindBin::Bin/tapset";
 
 #warn "Inc: @$Inc\n";
 
-if ($^O ne 'linux') {
-    die "Only linux is supported but I am on $^O.\n";
-}
-
-if ($print_args && $args && %$args) {
-    die "No --arg is allowed when --args is specified.\n";
-}
-
 # verify systemtap verion
 
 my $infile;
-if (!defined $src) {
-    $infile = shift
-        or die "No input file specified.\n";
-    $src = read_src_file($infile);
-
-} else {
-    $infile = "-e";
-}
+$infile = shift or die "No input file specified.\n";
+$src = read_src_file($infile);
 
 my (%StdVars, %UsedLibs, %DSOs, %LibPaths, %UsedStdVars);
 
@@ -67,25 +50,19 @@ if (!defined $StdVars{target} && defined $exec_path) {
     $StdVars{target} = 'ANY';
 }
 
-if (!$print_args) {
-    while (my ($k, $v) = each %$args) {
-        #warn "getting $k => $v";
-        $StdVars{"arg_$k"} = $v;
-    }
+# 将arg=xx 存到 std var 中
+while (my ($k, $v) = each %$args) {
+    #warn "getting $k => $v";
+    $StdVars{"arg_$k"} = $v;
 }
-
 my %used_args;
 
 print " wg: process_src $infile  --\n";
 my $stap_src = process_src($infile, $src);
-if ($dump_src) {
-    if ($dump_src_out) {
-        print " wg: dump_src_out $dump_src_out\n";
-        open my $out, ">$dump_src_out" or die "Cannot open $dump_src_out for writing: $!\n";
-        print $out $stap_src;
-        close $out;
-    }
-}
+print " wg: dump_src_out $dump_src_out\n";
+open my $out, ">$dump_src_out" or die "Cannot open $dump_src_out for writing: $!\n";
+print $out $stap_src;
+close $out;
 
 sub eval_usr_var {
     my ($file, $usr_vars, $var) = @_;
@@ -193,6 +170,7 @@ sub find_dso_path {
     return $found_path;
 }
 
+# 这个是将文件名转换为文件内容
 sub read_src_file {
     my $infile = shift;
     print " wg: read_src_file $infile\n";
@@ -263,44 +241,6 @@ Examples:
 _EOC_
 }
 
-sub get_child_processes {
-    my $pid = shift;
-    my @files = glob "/proc/[0-9]*/stat";
-    my @children;
-    for my $file (@files) {
-        #print "file: $file\n";
-        if ($file =~ m{^/proc/$pid/}) {
-            next;
-        }
-
-        open my $in, $file or next;
-        my $line = <$in>;
-        close $in;
-        if ($line =~ /^(\d+) \S+ \S+ (\d+)/) {
-            my ($child, $parent) = ($1, $2);
-            if ($parent eq $pid) {
-                push @children, $child;
-            }
-        }
-    }
-
-    @children = sort { $a <=> $b } @children;
-    return @children;
-}
-
-sub gen_pid_test_condition {
-    my $pids = shift;
-    if (!$pids) {
-        return "pid() == target()";
-    }
-
-    my @c;
-    for my $pid (@$pids) {
-        push @c, "pid() == $pid";
-    }
-    return '(' . join(" || ", @c) . ')';
-}
-
 # 读 /proc/$pid/maps 然后加 -d
 sub process_dso {
     my $pid = shift;
@@ -322,23 +262,3 @@ sub process_dso {
         push @stap_opts, "-d", $path;
     }
 }
-
-sub quote_sh_args ($) {
-    my ($args) = @_;
-    for my $arg (@$args) {
-       if ($arg =~ m{^[- "&%;,|?*.+=\w:/()]*$}) {
-          if ($arg =~ /[ "&%;,|?*()]/) {
-             $arg = "'$arg'";
-          }
-          next;
-       }
-       $arg =~ s/\\/\\\\/g;
-       $arg =~ s/'/\\'/g;
-       $arg =~ s/\n/\\n/g;
-       $arg =~ s/\r/\\r/g;
-       $arg =~ s/\t/\\t/g;
-       $arg = "\$'$arg'";
-    }
-    return "@$args";
-}
-

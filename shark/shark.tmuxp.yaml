@@ -5,6 +5,7 @@ windows:
     panes:
       - shell_command:
           - printf '\033]2;%s\033\\' 'stapxx'
+          - echo "source ./actions/stapxx.actions.sh;stapxx-run-docker-nginx alauda-resty ./shark/nginx/flamegraph.sxx"
       - shell_command:
           - printf '\033]2;%s\033\\' 'alb-docker'
           - cd /home/cong/sm/project/alauda-resty
@@ -25,3 +26,6 @@ windows:
           - printf '\033]2;%s\033\\' 'k6'
           - cd /home/cong/sm/project/alauda-resty
           - source ./actions/resty-app.actions.sh;resty-app-k6-simple
+      - shell_command:
+          - printf '\033]2;%s\033\\' 'htop'
+          - htop

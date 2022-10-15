@@ -1,47 +1,5 @@
 #!/usr/bin/bash
 
-# bash -x -c '. ./actions/stapxx.actions.sh;stapxx-run'
-function stapxx-run() (
-    local pid=$1
-    sudo rm -rf ./stapxx-*
-    local sxx="./wg-samples/j-stap-1-luajit-backtrace-stack.sxx"
-    local time=120
-    local flag=" -v -D MAXMAPENTRIES=200000  -D MAXSKIPPED=200000  -x $pid  --arg time=$time"
-    rm -rf $out
-    mkdir -p $out
-    sudo ./stap++ $sxx  $flag |tee $out/stap.log
-    sudo chmod a+r ./stapxx-* 
-    sudo chmod -R 755 $(ls |grep stapxx-)
-    IGNORE_RAW_PROBEFN=true
-    stapxx-svg $out/stap.log
-    firefox $out/stacks.svg &!
-)
-
-function stapxx-find-dpath() {
-    local dpaths=$(cat $1)
-    local base=$2
-    local out=""
-    while  read -d "|" -r sopath
-	do
-        sudo test -f $sopath
-        local has_raw=$?
-        # echo "$has_raw"
-        if [[ "$has_raw" == "0" ]];then
-            out="$out -d $sopath"
-            # echo $sopath "raw"
-            continue
-        fi
-        sopath="$base$sopath"
-        sudo test -f $sopath
-        local has_proc=$?
-        if [[ "$has_proc" == "0" ]];then
-            out="$out -d $sopath"
-            continue
-        fi
-    done <<<$(echo $dpaths) 
-    echo $out
-}
-
 function stapxx-find-dependency() {
     local cname=$1
     local nginx_master=$(docker-get-pid-by-container-name-or-uuid $cname)
@@ -71,45 +29,60 @@ function stapxx-find-dependency() {
     echo $out | grep \s
 }
 
-function stapxx-run-docker-nginx() (
+function shark-docker() (
     # set -x
     local cname=$1 #nginx container id, the fd 1 process must be nginx master.
+    local sxx="$2"
     sudo rm -rf ./stapxx-* || true
     local time=120
     local base=$(docker inspect $cname  | jq -r '.[0].GraphDriver.Data.MergedDir')
     local nginx_master=$(docker-get-pid-by-container-name-or-uuid $cname)
     local pid=$(ps-list-child $nginx_master | tail -n 1 | awk '{print $2}')
+    local id=${3:=$RANDOM}
     echo $base
     echo $pid
-    local sxx="./wg-samples/docker/j-stap-1-luajit-backtrace-stack.sxx"
-    local sxx="./wg-samples/docker/2-get_l_m_vmstate.sxx"
-    local sxx="./wg-samples/docker/j-stap-1-luajit-backtrace-stack.sxx"
+    echo $id
     # local sxx="./wg-samples/docker/fnname.sxx"
-    sudo rm -rf ./stap-raw
-    mkdir -p ./stap-raw
-    ./stap++ -dump-src -base=/proc/$pid/root -dump-src-out=./stap-raw/nginx.stap $sxx --sample-pid $pid -exec=/proc/$pid/root/openresty-wg/target/nginx/sbin/nginx --arg time=$time
-    echo '#!/bin/bash' >> ./stap-raw/run.sh
-    echo "sudo wg-stap ./stap-raw/nginx.stap \\" >> ./stap-raw/run.sh
-    echo " -s 160 \\" >> ./stap-raw/run.sh
+    local base=./stap-raw/$id
+    mkdir -p $base || true
+    echo "trans"
+    ./stap++ -dump-src  -dump-src-out=$base/nginx.stap $sxx  --arg time=$time
+    rm  $base/run.sh
+    echo '#!/bin/bash' >> $base/run.sh
+    echo "sudo wg-stap $base/nginx.stap \\" >> $base/run.sh
+    echo " -s 160 \\" >> $base/run.sh
     while read -r dpath;do
-        echo " -d $dpath \\" >> ./stap-raw/run.sh
+        # echo " -d $dpath \\" >> ./stap-raw/run.sh
     done <<<$(stapxx-find-dependency $cname)
-    echo " -v -D MAXMAPENTRIES=2000000  -D MAXSKIPPED=200000  -DDEBUG_TASK_FINDER=9 -DDEBUG_UPROBES=9 -DDEBUG_TASK_FINDER_VMA=9 \\" >>./stap-raw/run.sh
-    echo " --sysroot=/proc/$pid/root  -x $pid" >>./stap-raw/run.sh
-    cat ./stap-raw/run.sh
-    chmod a+x ./stap-raw/run.sh
+
+    echo " -v -D MAXMAPENTRIES=2000  -D MAXSKIPPED=200000  -DDEBUG_TASK_FINDER=9 -DDEBUG_UPROBES=9 -DDEBUG_TASK_FINDER_VMA=9 \\" >>$base/run.sh
+    echo " --sysroot=/proc/$pid/root  -x $pid" >>$base/run.sh
+    cat $base/run.sh
+    chmod a+x $base/run.sh
 
     local exec_path=$(stapxx-find-dependency $cname |grep nginx)
     local lua_path=$(stapxx-find-dependency $cname |grep luajit)
     echo "exec_path: $exec_path"
     echo "lua_path $lua_path"
-    sed -i "s|$\^exec_path|$exec_path|g" ./stap-raw/nginx.stap 
-    sed -i "s|$\^libluajit_path|$lua_path|g" ./stap-raw/nginx.stap 
-    mkdir ./stap-raw
-    ./stap-raw/run.sh 2>&1 | tee ./stap-raw/stap.log
-    stapxx-svg ./stap-raw/stap.log  ./stap-raw/out /proc/$pid/root
-    # ls ./stap-raw/out
-    # firefox  ./stap-raw/out/stacks.svg
+    sed -i "s|$\^exec_path|$exec_path|g" $base/nginx.stap 
+    sed -i "s|$\^libluajit_path|$lua_path|g" $base/nginx.stap 
+    mkdir $base
+    $base/run.sh 2>&1 | tee $base/stap.log
+)
+
+function shark-docker-flamegraph() (
+    local cname=$1 #nginx container id, the fd 1 process must be nginx master.
+    local sxx="$2"
+    local name=${3:=$(date +%s%N)}
+    local nginx_master=$(docker-get-pid-by-container-name-or-uuid $cname)
+    local pid=$(ps-list-child $nginx_master | tail -n 1 | awk '{print $2}')
+    echo $cname $sxx $name $pid
+    shark-docker $cname $sxx $name
+    set -x
+    stapxx-svg ./stap-raw/$name/stap.log  ./stap-raw/$name/out /proc/$pid/root
+    set +x
+    ls ./stap-raw/$name/out
+    # firefox  ./stap-raw/$name/out/out/stacks.svg
 )
 
 function stapxx-svg () (
@@ -124,8 +97,8 @@ function stapxx-svg () (
     # fi
 
     # if [ -n "$IGNORE_RAW_PROBEFN" ] ; then
-         sed -i '/|pf-s|unresolved|pf-e||lb||vm_c|err:none-frame/d' $out/stacks.bt
-         sed -i '/|pf-s|unresolved|pf-e||lb|err:vm_xstate_interp/d' $out/stacks.bt
+        #  sed -i '/|pf-s|unresolved|pf-e||lb||vm_c|err:none-frame/d' $out/stacks.bt
+        #  sed -i '/|pf-s|unresolved|pf-e||lb|err:vm_xstate_interp/d' $out/stacks.bt
 
     # fi
 
