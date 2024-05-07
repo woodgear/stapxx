@@ -1,11 +1,13 @@
 #!/usr/bin/env stap++
 
-@use luajit
+@use luajit_gc64
 
 global stats
 
-probe process("$^libluajit_path").statement("*@lj_str.c:161") {
-    bucket = &$g->strhash[$h & $g->strmask]
+// lj_str.c:356 is the line after "hash" has been created:
+//     StrHash hash = hash_sparse(g->str.seed, str, len);
+probe process("$^libluajit_path").statement("*@lj_str.c:356") {
+    bucket = &$g->str->tab[$hash & $g->str->mask]
     stats <<< luajit_bucket_depth(bucket)
     //printf("depth = %d\n", depth)
     //exit()
