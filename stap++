@@ -18,6 +18,7 @@ GetOptions("D=s@",          \(my $D_opts),
            "dump-src",      \(my $dump_src),
            "sample-pid=i",  \(my $sample_pid),
            "exec=s",        \(my $exec_path),
+           "sysroot=s",     \(my $sysroot),
            "help",          \(my $help),
            "master=i",      \(my $master_pid),
            "x=i",           \(my $pid),
@@ -126,7 +127,10 @@ if (defined $exec_path) {
     while (<$in>) {
         if (m{\s+(\/\S+\.so(?:\.\d+)*)}) {
             my $path = $1;
-            #warn "Found DSO $path.\n";
+            if (defined $sysroot) {
+                $path = "$sysroot/$path";
+            }
+            warn "exec path Found DSO $path.\n";
             $DSOs{$path} = 1;
         }
     }
@@ -155,6 +159,10 @@ if (defined $pid) {
 
     if (!defined $exec_path) {
         $exec_path = readlink $exec_file;
+        if (defined $sysroot) {
+            print "prefix detect exec path with sysroot $exec_path\n";
+            $exec_path = "$sysroot/$exec_path";
+        }
         $StdVars{exec_path} = $exec_path;
         push @stap_opts, "-d", $exec_path;
     }
@@ -256,7 +264,11 @@ if (defined $shcmd) {
     push @stap_opts, "-c", $shcmd;
 }
 
-my $cmd = "stap " . quote_sh_args(\@stap_opts) . " -";
+if (defined $sysroot) {
+    print "sysroot: $sysroot\n";
+    push @stap_opts, "--sysroot", $sysroot;
+}
+my $cmd = "wg-stap " . quote_sh_args(\@stap_opts) . " -";
 #warn $cmd;
 open my $in, "|$cmd"
     or die "Cannot run stap: $!\n";
@@ -312,6 +324,7 @@ sub eval_std_var {
     } elsif ($var =~ /^(lib\w+)_path$/) {
         my $prefix = $1;
         my $libpath = find_dso_path($prefix);
+        print("find path of $prefix $libpath\n");
         if (!$libpath) {
             warn "$file: line $.: $prefix is not found, assuming it is statically linked.\n";
             if (!defined $StdVars{exec_path}) {
@@ -334,6 +347,7 @@ sub find_dso_path {
 
     my $path = $LibPaths{$pat};
     if ($path) {
+        print "Found cached path for $pat: $path\n";
         return $path;
     }
 
@@ -346,13 +360,13 @@ sub find_dso_path {
 
     my $found_path;
     for my $path (sort keys %DSOs) {
-        #warn "checking $path against $pat";
+        warn "checking $path against $pat";
         if ($path =~ m{\blib\Q$name\E[-.\d]*\.so(?:\.\d+)*(?:\.\w+)*$}) {
             $LibPaths{$pat} = $path;
             $found_path = $path;
             warn "Found exact match for $pat: $path\n";
             last;
-	}
+	    }
 
         if ($path =~ m{\b(?:lib)?\Q$name\E[^/\s]*?\.so(?:\.\d+)*$}) {
             if ($found_path) {
@@ -505,8 +519,12 @@ sub process_dso {
     while (<$in>) {
         if (m{\S+\.so(?:\.\d+)*(?:\.\w+)*$}) {
             my $path = $&;
+            if (defined $sysroot) {
+                $path = "$sysroot/$path";
+                print "prefix with sysroot $path\n";
+            }
             $DSOs{$path} = 1;
-            #warn "seeing $path";
+            warn "seeing $path";
         }
     }
 
