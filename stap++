@@ -160,7 +160,7 @@ if (defined $pid) {
     if (!defined $exec_path) {
         $exec_path = readlink $exec_file;
         if (defined $sysroot) {
-            print "prefix detect exec path with sysroot $exec_path\n";
+            # print "prefix detect exec path with sysroot $exec_path\n";
             $exec_path = "$sysroot/$exec_path";
         }
         $StdVars{exec_path} = $exec_path;
@@ -265,7 +265,7 @@ if (defined $shcmd) {
 }
 
 if (defined $sysroot) {
-    print "sysroot: $sysroot\n";
+    # print "sysroot: $sysroot\n";
     push @stap_opts, "--sysroot", $sysroot;
 }
 my $cmd = "wg-stap " . quote_sh_args(\@stap_opts) . " -";
@@ -324,7 +324,6 @@ sub eval_std_var {
     } elsif ($var =~ /^(lib\w+)_path$/) {
         my $prefix = $1;
         my $libpath = find_dso_path($prefix);
-        print("find path of $prefix $libpath\n");
         if (!$libpath) {
             warn "$file: line $.: $prefix is not found, assuming it is statically linked.\n";
             if (!defined $StdVars{exec_path}) {
@@ -347,7 +346,7 @@ sub find_dso_path {
 
     my $path = $LibPaths{$pat};
     if ($path) {
-        print "Found cached path for $pat: $path\n";
+        # print "Found cached path for $pat: $path\n";
         return $path;
     }
 
@@ -521,7 +520,7 @@ sub process_dso {
             my $path = $&;
             if (defined $sysroot) {
                 $path = "$sysroot/$path";
-                print "prefix with sysroot $path\n";
+                # print "prefix with sysroot $path\n";
             }
             $DSOs{$path} = 1;
             warn "seeing $path";
